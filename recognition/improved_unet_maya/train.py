@@ -1,79 +1,88 @@
-import argparse, os
+# train.py
 import torch, torch.nn as nn
 from torch.utils.data import DataLoader
-from dataset import OasisPNG2DPaired
-from modules import UNet2D
+from dataset import OasisSliceDataset
+from modules import ImprovedUNet
 
-def dice_coef(logits, target, eps=1e-6):
-    p = (torch.sigmoid(logits) > 0.5).float()
-    inter = (p * target).sum()
-    denom = p.sum() + target.sum()
-    return (2*inter + eps) / (denom + eps)
+def dice_per_class(logits, target, eps=1e-6):
+    # logits: [B,C,H,W], target: [B,H,W]
+    C = logits.shape[1]
+    pred = torch.softmax(logits, dim=1)
+    dices = []
+    for c in range(C):
+        p = pred[:,c].contiguous().view(-1)
+        t = (target==c).float().contiguous().view(-1)
+        inter = (p*t).sum()
+        denom = p.sum() + t.sum()
+        dices.append((2*inter + eps)/(denom + eps))
+    return torch.stack(dices)  # [C]
+
+class DiceCELoss(nn.Module):
+    def __init__(self, weight=None):
+        super().__init__()
+        self.ce = nn.CrossEntropyLoss(weight=weight)
+    def forward(self, logits, target):
+        ce = self.ce(logits, target)
+        with torch.no_grad():
+            pass
+        # soft dice
+        C = logits.shape[1]
+        pred = torch.softmax(logits, dim=1)
+        target_1h = torch.nn.functional.one_hot(target, C).permute(0,3,1,2).float()
+        inter = (pred*target_1h).sum(dim=(0,2,3))
+        denom = pred.sum(dim=(0,2,3)) + target_1h.sum(dim=(0,2,3))
+        dice = (2*inter+1e-6)/(denom+1e-6)
+        dice_loss = 1 - dice.mean()
+        return 0.5*ce + 0.5*dice_loss
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--train_img_root", default="/home/groups/comp3710/OASIS/keras_png_slices_train")
-    ap.add_argument("--train_msk_root", default="/home/groups/comp3710/OASIS/keras_png_slices_seg_train")
-    ap.add_argument("--val_img_root",   default="/home/groups/comp3710/OASIS/keras_png_slices_validate")
-    ap.add_argument("--val_msk_root",   default="/home/groups/comp3710/OASIS/keras_png_slices_seg_validate")
-    ap.add_argument("--img_size", type=int, default=256)
-    ap.add_argument("--batch", type=int, default=16)
-    ap.add_argument("--epochs", type=int, default=3)
-    ap.add_argument("--lr", type=float, default=1e-3)
-    ap.add_argument("--outdir", default="/scratch/$USER/comp3710_models/improved_unet_maya")
-    args = ap.parse_args()
+    train_imgs = "/home/groups/comp3710/OASIS/keras_png_slices_train"
+    train_lbls = "/home/groups/comp3710/OASIS/keras_png_slices_seg_train"
+    val_imgs   = "/home/groups/comp3710/OASIS/keras_png_slices_validate"
+    val_lbls   = "/home/groups/comp3710/OASIS/keras_png_slices_seg_validate"
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    os.makedirs(os.path.expandvars(args.outdir), exist_ok=True)
+    ds_tr = OasisSliceDataset(train_imgs, train_lbls)
+    ds_va = OasisSliceDataset(val_imgs,   val_lbls)
+    dl_tr = DataLoader(ds_tr, batch_size=16, shuffle=True, num_workers=4, pin_memory=True)
+    dl_va = DataLoader(ds_va, batch_size=32, shuffle=False, num_workers=4)
 
-    train_ds = OasisPNG2DPaired(args.train_img_root, args.train_msk_root, img_size=args.img_size)
-    val_ds   = OasisPNG2DPaired(args.val_img_root,   args.val_msk_root,   img_size=args.img_size)
-    train_loader = DataLoader(train_ds, batch_size=args.batch, shuffle=True, num_workers=4, pin_memory=True)
-    val_loader   = DataLoader(val_ds,   batch_size=args.batch, shuffle=False, num_workers=4)
+    n_classes =  (torch.stack([s['mask'] for s in [ds_tr[0]]]).max().item() + 1)
+    model = ImprovedUNet(n_classes=n_classes).cuda()
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    sch = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="max", patience=5, factor=0.5)
+    loss_fn = DiceCELoss()
 
-    # sanity check
-    xb, yb = next(iter(train_loader))
-    print("Batch shapes:", xb.shape, yb.shape)  # expect [B,1,256,256]
-
-    model = UNet2D().to(device)
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
-    loss_fn = nn.BCEWithLogitsLoss()
-
+    scaler = torch.cuda.amp.GradScaler()
     best = 0.0
-    for epoch in range(1, args.epochs+1):
+    for epoch in range(100):
         model.train()
-        tl, td, n = 0.0, 0.0, 0
-        for x, y in train_loader:
-            x, y = x.to(device), y.to(device)
-            opt.zero_grad()
-            logits = model(x)
-            loss = loss_fn(logits, y)
-            loss.backward(); opt.step()
-            with torch.no_grad():
-                bsz = x.size(0)
-                tl += loss.item()*bsz
-                td += dice_coef(logits, y).item()*bsz
-                n += bsz
-        tl /= n; td /= n
+        for batch in dl_tr:
+            x = batch["image"].cuda(); y = batch["mask"].cuda()
+            opt.zero_grad(set_to_none=True)
+            with torch.cuda.amp.autocast():
+                out = model(x)
+                if isinstance(out, tuple):  # deep supervision
+                    main, a2, a1 = out
+                    loss = loss_fn(main, y) + 0.3*loss_fn(a2, y) + 0.3*loss_fn(a1, y)
+                else:
+                    loss = loss_fn(out, y)
+            scaler.scale(loss).backward()
+            scaler.step(opt); scaler.update()
 
+        # validate
         model.eval()
-        vl, vd, m = 0.0, 0.0, 0
+        dices = []
         with torch.no_grad():
-            for x, y in val_loader:
-                x, y = x.to(device), y.to(device)
-                logits = model(x)
-                loss = loss_fn(logits, y)
-                bsz = x.size(0)
-                vl += loss.item()*bsz
-                vd += dice_coef(logits, y).item()*bsz
-                m += bsz
-        vl /= m; vd /= m
-        print(f"[{epoch}/{args.epochs}] train_loss={tl:.4f} dice={td:.4f} | val_loss={vl:.4f} dice={vd:.4f}")
-
-        if vd > best:
-            best = vd
-            ckpt = os.path.expandvars(os.path.join(args.outdir, "unet2d_best.pt"))
-            torch.save({"epoch": epoch, "state_dict": model.state_dict()}, ckpt)
+            for batch in dl_va:
+                x = batch["image"].cuda(); y = batch["mask"].cuda()
+                logits = model(x)[0] if isinstance(model(x), tuple) else model(x)
+                dices.append(dice_per_class(logits, y))
+        mean_dice = torch.cat(dices).mean().item()
+        sch.step(mean_dice)
+        if mean_dice > best:
+            best = mean_dice
+            torch.save(model.state_dict(), "best_oasis_improved_unet.pt")
+        print(f"Epoch {epoch}: val mean Dice={mean_dice:.4f}")
 
 if __name__ == "__main__":
     main()

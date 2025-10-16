@@ -1,31 +1,86 @@
-import torch
-import torch.nn as nn
+# modules.py
+import torch, torch.nn as nn, torch.nn.functional as F
 
-def conv_block(cin, cout):
-    return nn.Sequential(
-        nn.Conv2d(cin, cout, 3, padding=1), nn.BatchNorm2d(cout), nn.ReLU(inplace=True),
-        nn.Conv2d(cout, cout, 3, padding=1), nn.BatchNorm2d(cout), nn.ReLU(inplace=True)
-    )
+def conv3x3(in_c, out_c): return nn.Conv2d(in_c, out_c, 3, padding=1, bias=False)
 
-#test comment *
-class UNet2D(nn.Module):
-    def __init__(self, in_ch=1, out_ch=1, base=32):
+class ResBlock(nn.Module):
+    def __init__(self, c):
         super().__init__()
-        self.d1 = conv_block(in_ch, base);   self.p1 = nn.MaxPool2d(2)
-        self.d2 = conv_block(base, base*2);  self.p2 = nn.MaxPool2d(2)
-        self.d3 = conv_block(base*2, base*4);self.p3 = nn.MaxPool2d(2)
-        self.bn = conv_block(base*4, base*8)
-        self.u3 = nn.ConvTranspose2d(base*8, base*4, 2, 2); self.c3 = conv_block(base*8, base*4)
-        self.u2 = nn.ConvTranspose2d(base*4, base*2, 2, 2); self.c2 = conv_block(base*4, base*2)
-        self.u1 = nn.ConvTranspose2d(base*2, base,   2, 2); self.c1 = conv_block(base*2, base)
-        self.head = nn.Conv2d(base, out_ch, 1)
+        self.conv1 = conv3x3(c, c); self.bn1 = nn.BatchNorm2d(c)
+        self.conv2 = conv3x3(c, c); self.bn2 = nn.BatchNorm2d(c)
+    def forward(self, x):
+        id = x
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = self.bn2(self.conv2(x))
+        return F.relu(x + id)
+
+class Down(nn.Module):
+    def __init__(self, in_c, out_c):
+        super().__init__()
+        self.seq = nn.Sequential(
+            nn.Conv2d(in_c, out_c, 3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(out_c), nn.ReLU(inplace=True),
+            ResBlock(out_c), nn.Dropout2d(0.1),
+        )
+    def forward(self, x): return self.seq(x)
+
+class Up(nn.Module):
+    def __init__(self, in_c, out_c):
+        super().__init__()
+        self.up = nn.ConvTranspose2d(in_c, out_c, 2, stride=2)
+        self.conv = nn.Sequential(
+            conv3x3(out_c*2, out_c), nn.BatchNorm2d(out_c), nn.ReLU(inplace=True),
+            ResBlock(out_c), nn.Dropout2d(0.1),
+        )
+    def forward(self, x, skip):
+        x = self.up(x)
+        x = torch.cat([x, skip], dim=1)
+        return self.conv(x)
+
+class ImprovedUNet(nn.Module):
+    def __init__(self, n_classes, base=32, deep_supervision=True):
+        super().__init__()
+        self.deep = deep_supervision
+        self.stem = nn.Sequential(
+            nn.Conv2d(1, base, 3, padding=1, bias=False),
+            nn.BatchNorm2d(base), nn.ReLU(inplace=True), ResBlock(base)
+        )
+        self.d1 = Down(base, base*2)
+        self.d2 = Down(base*2, base*4)
+        self.d3 = Down(base*4, base*8)
+
+        # bottleneck with dilations (CAN-style context)
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(base*8, base*16, 3, padding=1, dilation=1, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(base*16, base*16, 3, padding=2, dilation=2, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(base*16, base*16, 3, padding=4, dilation=4, bias=False),
+            nn.ReLU(inplace=True),
+        )
+
+        self.u3 = Up(base*16, base*8)
+        self.u2 = Up(base*8,  base*4)
+        self.u1 = Up(base*4,  base*2)
+        self.head = nn.Sequential(
+            conv3x3(base*2, base), nn.BatchNorm2d(base), nn.ReLU(inplace=True),
+            nn.Conv2d(base, n_classes, 1)
+        )
+
+        if self.deep:
+            self.aux2 = nn.Conv2d(base*4, n_classes, 1)
+            self.aux1 = nn.Conv2d(base*2, n_classes, 1)
 
     def forward(self, x):
-        d1 = self.d1(x)
-        d2 = self.d2(self.p1(d1))
-        d3 = self.d3(self.p2(d2))
-        bn = self.bn(self.p3(d3))
-        x = self.c3(torch.cat([self.u3(bn), d3], 1))
-        x = self.c2(torch.cat([self.u2(x),  d2], 1))
-        x = self.c1(torch.cat([self.u1(x),  d1], 1))
-        return self.head(x)  # logits
+        s0 = self.stem(x)     # base
+        s1 = self.d1(s0)      # 2b
+        s2 = self.d2(s1)      # 4b
+        s3 = self.d3(s2)      # 8b
+        b  = self.bottleneck(s3)
+        x3 = self.u3(b, s2)
+        x2 = self.u2(x3, s1)
+        x1 = self.u1(x2, s0)
+        out = self.head(x1)
+        if self.deep and self.training:
+            return out, self.aux2(x2), self.aux1(x1)
+        return out

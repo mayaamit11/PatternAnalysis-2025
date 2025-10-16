@@ -1,34 +1,32 @@
-import os, glob
+# dataset.py
+from pathlib import Path
 from PIL import Image
 import torch
 from torch.utils.data import Dataset
-import torchvision.transforms.functional as TF
+import numpy as np
 
-class OasisPNG2DPaired(Dataset):
-    """
-    Pair files by basename across two folders.
-    Example:
-      images_root = /home/groups/.../keras_png_slices_train
-      masks_root  = /home/groups/.../keras_png_slices_seg_train
-    """
-    def __init__(self, images_root, masks_root, img_size=256):
-        self.images_root = images_root
-        self.masks_root = masks_root
-        self.imgs = sorted(glob.glob(os.path.join(images_root, "*.png")))
-        assert self.imgs, f"No PNGs found in {images_root}"
-        self.msks = [os.path.join(masks_root, os.path.basename(p)) for p in self.imgs]
-        for m in self.msks:
-            if not os.path.exists(m):
-                raise FileNotFoundError(f"Missing mask for {os.path.basename(m)}")
-        self.img_size = img_size
+class OasisSliceDataset(Dataset):
+    def __init__(self, img_dir, lbl_dir, transform=None):
+        self.img_dir = Path(img_dir); self.lbl_dir = Path(lbl_dir)
+        self.fnames = sorted([p.name for p in self.img_dir.glob("*.png")])
+        self.transform = transform
 
-    def __len__(self): return len(self.imgs)
+    def __len__(self): return len(self.fnames)
 
-    def __getitem__(self, i):
-        x = Image.open(self.imgs[i]).convert("L")  # grayscale image
-        y = Image.open(self.msks[i]).convert("L")  # grayscale mask (0/255)
-        x = TF.to_tensor(x)                       # [1,H,W] in [0,1]
-        y = (TF.to_tensor(y) > 0.5).float()       # binarise to {0,1}
-        x = TF.resize(x, [self.img_size, self.img_size])
-        y = TF.resize(y, [self.img_size, self.img_size], interpolation=TF.InterpolationMode.NEAREST)
-        return x, y
+    def __getitem__(self, idx):
+        name = self.fnames[idx]
+        img = np.array(Image.open(self.img_dir / name)).astype(np.float32)
+        if img.ndim == 3: img = img[...,0]  # guard: grayscale
+        # z-score normalisation (fallback to min-max if std==0)
+        m, s = img.mean(), img.std()
+        img = (img - m)/(s+1e-6)
+
+        mask = np.array(Image.open(self.lbl_dir / name)).astype(np.int64)
+
+        # torch tensors
+        img = torch.from_numpy(img)[None, ...]       # [1,H,W]
+        mask = torch.from_numpy(mask)                # [H,W]
+        sample = {"image": img, "mask": mask, "name": name}
+
+        if self.transform: sample = self.transform(sample)
+        return sample
