@@ -1,9 +1,16 @@
-# improved_unet_maya — OASIS 2D segmentation
+# OASIS 2D Segmentation with CAN (Context Aggregation Network)
 
-- Data: PNG slices at `/home/groups/comp3710/OASIS/*`
-- Model: UNet2D (binary), BCEWithLogits loss, Dice metric
-- Image size: 256×256
+## Overview
+This project segments 2D OASIS brain slices using a **2D CAN** (dilated residual CNN).
+Target: **per-class Dice ≥ 0.90** on the test set.
 
-## Train
-```bash
-python train.py --epochs 1
+## Files
+- `modules.py` — CAN2D model (stem + dilated residual stack + 1×1 head).
+- `dataset.py` — robust loader for OASIS PNG slices with `case_* ↔ seg_*` pairing.
+- `train.py` — training/validation/testing with Dice+CE, plots & checkpoints.
+- `predict.py` — load best checkpoint, compute test Dice, save colorized masks.
+- `jobs/` — your SLURM runners (optional).
+- `runs/` — outputs: `checkpoints/`, `logs/`, `preds/`.
+
+## Data (Rangpur)
+Read-only:
