@@ -94,24 +94,3 @@ class OasisSliceDataset(Dataset):
         }
         if self.transform: sample = self.transform(sample)
         return sample
-    
-    
-    try:
-        import nibabel as nib
-    except Exception as e:
-        nib = None  # raises in __init__ if used without nibabel installed
-
-
-    #added prostate dataset class 
-    class Prostate3DDataset(Dataset):
-        """
-        Returns (image, mask) where:
-        image: FloatTensor[C,D,H,W]  (C=1 or 2 modalities)
-        mask:  LongTensor[D,H,W]     (0=background, 1=prostate)
-
-        Args:
-        root: dataset root (with imagesTr/, labelsTr/)
-        split: "train" | "val" | "test"  (val = last 10% by id)
-        patch_size: 3D crop size (d,h,w); None = full volume (careful with memory)
-        augment: flips along z/y/x if True
-        """
