@@ -97,6 +97,8 @@ class Prostate3DDataset(Dataset):
 
     #this allows us to train later... using an overlay of the img_dir and the label 
     # train_ds = Prostate3DDataset(img_dir, label_dir)
+    #basically if you go into the image section, it displays a slice 
+    # of a black and white png and an overlay that has been annotated (in colour)
 
 
     def __init__(self, image_dir, label_dir, transform=None, strict=True, limit=None):
