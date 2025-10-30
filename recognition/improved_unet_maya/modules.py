@@ -5,6 +5,19 @@ def conv3(in_c, out_c, dilation=1):
     pad = dilation
     return nn.Conv2d(in_c, out_c, kernel_size=3, padding=pad, dilation=dilation, bias=False)
 
+
+#convolutional block
+def conv3d_block(in_c, out_c):
+    return nn.Sequential(
+        nn.Conv3d(in_c, out_c, 3, padding=1),
+        nn.BatchNorm3d(out_c),
+        nn.ReLU(inplace=True),
+        nn.Conv3d(out_c, out_c, 3, padding=1),
+        nn.BatchNorm3d(out_c),
+        nn.ReLU(inplace=True),
+    )
+
+
 class CANBlock(nn.Module):
     """Residual 3×3 with dilation for context aggregation."""
     def __init__(self, c, dilation):

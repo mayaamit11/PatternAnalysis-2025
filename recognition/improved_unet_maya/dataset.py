@@ -99,6 +99,7 @@ class Prostate3DDataset(Dataset):
     # train_ds = Prostate3DDataset(img_dir, label_dir)
     #basically if you go into the image section, it displays a slice 
     # of a black and white png and an overlay that has been annotated (in colour)
+    # we are trainig the model to recognise the prostate region on a scan alike to a human (prostate in gold)
 
 
     def __init__(self, image_dir, label_dir, transform=None, strict=True, limit=None):
@@ -107,20 +108,19 @@ class Prostate3DDataset(Dataset):
         self.transform = transform
         self.strict = strict
 
-        imgs = sorted(self.image_dir.glob("*.nii.gz"))
+        # inside Prostate3DDataset.__init__
+        imgs = sorted(Path(image_dir).glob("*_LFOV.nii.gz"))
         self.pairs, missing = [], []
         for ip in imgs:
-            case_id = ip.stem.replace("_MR", "")  # e.g., patient_001_MR -> patient_001
-            mp = self.label_dir / f"{case_id}_label.nii.gz"
+            stem = ip.stem.replace("_LFOV", "")            # e.g. B040_Week3
+            mp = Path(label_dir) / f"{stem}_SEMANTIC.nii.gz"
             if mp.exists():
                 self.pairs.append((ip, mp))
             else:
                 missing.append(ip.name)
-
         if missing and strict:
-            raise FileNotFoundError(
-                f"No matching label files for: {missing[:3]} ... in {self.label_dir}"
-            )
+            raise FileNotFoundError(f"Missing labels for e.g. {missing[:3]}")
+
         if limit:
             self.pairs = self.pairs[:limit]
 
