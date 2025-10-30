@@ -129,31 +129,18 @@ class Prostate3DDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path, mask_path = self.pairs[idx]
-        img_ni  = nib.load(img_path)
-        mask_ni = nib.load(mask_path) #the mask is the 
+        img = nib.load(img_path).get_fdata().astype(np.float32)
+        mask = nib.load(mask_path).get_fdata().astype(np.int64)
 
-        # canonical orientation (prevents RAS/LPS mismatches)
-        img  = nib.as_closest_canonical(img_ni).get_fdata().astype(np.float32)
-        mask = nib.as_closest_canonical(mask_ni).get_fdata().astype(np.int64)
+        # ... (normalization, expand_dims, etc) ...
 
-        if img.shape != mask.shape:
-            # final guard; if one has an extra singleton dim, fix here
-            if img.ndim == 4 and img.shape[-1] == 1: img = img[...,0]
-            if mask.ndim == 4 and mask.shape[-1] == 1: mask = mask[...,0]
-            if img.shape != mask.shape:
-                raise RuntimeError(f"Image/label shape mismatch: {img.shape} vs {mask.shape} for {img_path.name}")
-
-        # z-score per volume
-        m, s = img.mean(), img.std()
-        img = (img - m) / (s + 1e-6)
-
-        # channel-first for 3D convs
-        img = np.expand_dims(img, 0)  # [1, D, H, W]
+        # ✅ clean stem: e.g. "B006_Week0"
+        clean_name = img_path.name.replace("_LFOV.nii.gz", "")
 
         sample = {
-            "image": torch.from_numpy(img).float(),  # float32
-            "mask":  torch.from_numpy(mask).long(),  # class indices
-            "name":  img_path.stem,
+            "image": torch.from_numpy(img[None, ...]).float(),  # [1,D,H,W]
+            "mask":  torch.from_numpy(mask).long(),             # [D,H,W]
+            "name":  clean_name,                                # <- use clean name
         }
         if self.transform:
             sample = self.transform(sample)

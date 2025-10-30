@@ -27,6 +27,13 @@ PALETTE = np.array([
     [0, 255, 255],   # 6
 ], dtype=np.uint8)
 
+def name_to_mr_path(mr_dir, name):
+    base = name
+    # strip any suffixes if present
+    for suf in ("_LFOV.nii.gz", ".nii.gz", ".nii", "_LFOV"):
+        if base.endswith(suf):
+            base = base[: -len(suf)]
+    return os.path.join(mr_dir, f"{base}_LFOV.nii.gz")
 
 def paint_image(mask_np: np.ndarray) -> Image.Image:
     """Convert a 2D integer mask to an RGB color image using PALETTE."""
@@ -200,7 +207,7 @@ def main():
                 name = batch["name"][0]                 # e.g. "B040_Week3"
 
                 # reload MRI with affine via consistent name rule
-                mr_path = os.path.join(args.mr_dir, f"{name}_LFOV.nii.gz")
+                mr_path = name_to_mr_path(args.mr_dir, name)
                 ni = nib.load(mr_path)
                 affine = ni.affine
                 vol_full = ni.get_fdata()
