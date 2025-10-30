@@ -53,3 +53,32 @@ class CAN2D(nn.Module):
         x = self.blocks(x)
         x = self.dropout(x)
         return self.head(x)  # [B, C, H, W]
+
+
+#unet added... 
+class UNet3D(nn.Module):
+    def __init__(self, in_channels=1, out_channels=5, base=16):
+        super().__init__()
+        self.enc1 = conv3d_block(in_channels, base)
+        self.pool = nn.MaxPool3d(2)
+        self.enc2 = conv3d_block(base, base*2)
+        self.enc3 = conv3d_block(base*2, base*4)
+
+        self.up2 = nn.ConvTranspose3d(base*4, base*2, 2, 2)
+        self.dec2 = conv3d_block(base*4, base*2)
+        self.up1 = nn.ConvTranspose3d(base*2, base, 2, 2)
+        self.dec1 = conv3d_block(base*2, base)
+
+        self.outc = nn.Conv3d(base, out_channels, 1)
+
+    def forward(self, x):
+        e1 = self.enc1(x)          # B,base,D,H,W
+        e2 = self.enc2(self.pool(e1))
+        e3 = self.enc3(self.pool(e2))
+        d2 = self.up2(e3)
+        d2 = torch.cat([d2, e2], 1)
+        d2 = self.dec2(d2)
+        d1 = self.up1(d2)
+        d1 = torch.cat([d1, e1], 1)
+        d1 = self.dec1(d1)
+        return self.outc(d1)
