@@ -167,7 +167,7 @@ def main():
 
                 # keep MRI & affine for writing
                 # reload with nib to fetch affine/header (safer than storing in dataset)
-                mr_path = os.path.join(args.mr_dir, f"{name}_LFOV.nii.gz") if name.endswith(("Week0","Week1","Week2","Week3","Week4","Week5")) else None
+                mr_path = os.path.join(args.mr_dir, f"{name}_LFOV.nii.gz")
                 # fall back: use dataset’s underlying paired path if you’ve stored it; else reload via label path stem rule.
                 # For generality, just re-find via ds logic:
                 # (We know dataset paired label was stem+"_SEMANTIC.nii.gz", MRI was stem+"_LFOV.nii.gz")

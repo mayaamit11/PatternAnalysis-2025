@@ -112,7 +112,7 @@ class Prostate3DDataset(Dataset):
         imgs = sorted(Path(image_dir).glob("*_LFOV.nii.gz"))
         self.pairs, missing = [], []
         for ip in imgs:
-            stem = ip.stem.replace("_LFOV", "")            # e.g. B040_Week3
+            stem = ip.name.replace("_LFOV.nii.gz", "")   # e.g. "B006_Week0"
             mp = Path(label_dir) / f"{stem}_SEMANTIC.nii.gz"
             if mp.exists():
                 self.pairs.append((ip, mp))
