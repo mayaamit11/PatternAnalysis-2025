@@ -8,25 +8,40 @@ from modules import CAN2D
 from dataset import OasisSliceDataset
 
 PALETTE = np.array([
-    [0,0,0],        # background
-    [255,0,0],      # class 1
-    [0,255,0],      # class 2
-    [0,0,255],      # class 3
-    [255,255,0],    # class 4
-    [255,0,255],    # class 5 (if present)
+    [0, 0, 0],       # 0 background
+    [255, 0, 0],     # 1
+    [0, 255, 0],     # 2
+    [0, 0, 255],     # 3
+    [255, 255, 0],   # 4 (prostate typically)
+    [255, 0, 255],   # 5
+    [0, 255, 255],   # 6
 ], dtype=np.uint8)
 
-def dice_per_class(logits, target, eps=1e-6):
+
+def dice_per_class_2d(logits, target, eps=1e-6):
     C = logits.shape[1]
     pred = torch.softmax(logits, dim=1)
-    dices = []
+    out = []
     for c in range(C):
         p = pred[:, c].reshape(-1)
         t = (target == c).float().reshape(-1)
         inter = (p * t).sum()
         denom = p.sum() + t.sum()
-        dices.append((2 * inter + eps) / (denom + eps))
-    return torch.stack(dices)
+        out.append((2 * inter + eps) / (denom + eps))
+    return torch.stack(out)
+
+def dice_per_class_3d(logits, target, eps=1e-6):
+    # logits: [B,C,D,H,W], target: [B,D,H,W]
+    C = logits.shape[1]
+    pred = torch.softmax(logits, dim=1)
+    out = []
+    for c in range(C):
+        p = pred[:, c].reshape(-1)
+        t = (target == c).float().reshape(-1)
+        inter = (p*t).sum()
+        denom = p.sum() + t.sum()
+        out.append((2*inter + eps)/(denom + eps))
+    return torch.stack(out)
 
 def colorize(mask):
     c = PALETTE[np.clip(mask, 0, len(PALETTE)-1)]

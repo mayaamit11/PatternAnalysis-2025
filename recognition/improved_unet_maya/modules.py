@@ -71,6 +71,7 @@ class UNet3D(nn.Module):
 
         self.outc = nn.Conv3d(base, out_channels, 1)
 
+    
     def forward(self, x):
         e1 = self.enc1(x)          # B,base,D,H,W
         e2 = self.enc2(self.pool(e1))
