@@ -12,5 +12,8 @@ Target: **per-class Dice ≥ 0.90** on the test set.
 - `jobs/` — your SLURM runners (optional).
 - `runs/` — outputs: `checkpoints/`, `logs/`, `preds/`.
 
+
 ## Data (Rangpur)
 Read-only:
+
+

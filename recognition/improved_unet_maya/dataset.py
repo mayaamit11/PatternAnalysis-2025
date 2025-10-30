@@ -4,6 +4,7 @@ from PIL import Image
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+import os, glob, random
 
 def _strip_double_ext(name: str):
     if name.endswith(".nii.png"):
@@ -93,3 +94,17 @@ class OasisSliceDataset(Dataset):
         }
         if self.transform: sample = self.transform(sample)
         return sample
+    
+    #added prostate dataset class 
+    class Prostate3DDataset(Dataset):
+        """
+        Returns (image, mask) where:
+        image: FloatTensor[C,D,H,W]  (C=1 or 2 modalities)
+        mask:  LongTensor[D,H,W]     (0=background, 1=prostate)
+
+        Args:
+        root: dataset root (with imagesTr/, labelsTr/)
+        split: "train" | "val" | "test"  (val = last 10% by id)
+        patch_size: 3D crop size (d,h,w); None = full volume (careful with memory)
+        augment: flips along z/y/x if True
+        """

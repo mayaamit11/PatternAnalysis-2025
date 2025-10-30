@@ -8,6 +8,25 @@ from dataset import OasisSliceDataset
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import csv, os, time
+
+class CsvLogger:
+    def __init__(self, path, fieldnames):
+        self.path = path
+        self.fieldnames = fieldnames
+        new = not os.path.exists(path)
+        self.f = open(path, "a", newline="")
+        self.w = csv.DictWriter(self.f, fieldnames=fieldnames)
+        if new:
+            self.w.writeheader()
+            self.f.flush()
+    def log(self, **kwargs):
+        row = {k: kwargs.get(k) for k in self.fieldnames}
+        row["timestamp"] = int(time.time())
+        self.w.writerow(row)
+        self.f.flush()
+    def close(self):
+        self.f.close()
 
 def dice_per_class(logits, target, eps=1e-6):
     # logits: [B,C,H,W], target: [B,H,W]
