@@ -95,6 +95,13 @@ class OasisSliceDataset(Dataset):
         if self.transform: sample = self.transform(sample)
         return sample
     
+    
+    try:
+        import nibabel as nib
+    except Exception as e:
+        nib = None  # raises in __init__ if used without nibabel installed
+
+
     #added prostate dataset class 
     class Prostate3DDataset(Dataset):
         """
