@@ -129,13 +129,19 @@ class Prostate3DDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path, mask_path = self.pairs[idx]
-        img = nib.load(img_path).get_fdata().astype(np.float32)   # [D,H,W] or [H,W,D], depends on file
-        mask = nib.load(mask_path).get_fdata().astype(np.int64)
+        img_ni  = nib.load(img_path)
+        mask_ni = nib.load(mask_path) #the mask is the 
 
-        # Basic sanity: same shape
+        # canonical orientation (prevents RAS/LPS mismatches)
+        img  = nib.as_closest_canonical(img_ni).get_fdata().astype(np.float32)
+        mask = nib.as_closest_canonical(mask_ni).get_fdata().astype(np.int64)
+
         if img.shape != mask.shape:
-            # If orientation differs in source data, handle here (e.g., np.moveaxis or reorientation step)
-            raise RuntimeError(f"Image/label shape mismatch: {img.shape} vs {mask.shape} for {img_path.name}")
+            # final guard; if one has an extra singleton dim, fix here
+            if img.ndim == 4 and img.shape[-1] == 1: img = img[...,0]
+            if mask.ndim == 4 and mask.shape[-1] == 1: mask = mask[...,0]
+            if img.shape != mask.shape:
+                raise RuntimeError(f"Image/label shape mismatch: {img.shape} vs {mask.shape} for {img_path.name}")
 
         # z-score per volume
         m, s = img.mean(), img.std()
