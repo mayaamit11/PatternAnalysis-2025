@@ -45,7 +45,7 @@ class CAN2D(nn.Module):
         )
         rates = [1, 2, 4, 8, 16, 1]
         self.blocks = nn.Sequential(*[CANBlock(base, r) for r in rates])
-        self.dropout = nn.Dropout2d(dropout)
+        self.dropout = nn.Dropout2d(dropout)    
         self.head = nn.Conv2d(base, n_classes, kernel_size=1)
 
     def forward(self, x):

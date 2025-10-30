@@ -9,6 +9,25 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import csv, os, time
+##add ins 
+from dataset import Prostate3DDataset
+from modules import UNet3D
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+#importing labels and the 
+imgs = "/home/groups/comp3710/HipMRI_Study_open/semantic_MRs"
+labs = "/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only"
+
+
+train_ds = Prostate3DDataset(imgs, labs, strict=True)
+train_loader = DataLoader(train_ds, batch_size=1, shuffle=True, num_workers=2)
+
+
+model = UNet3D(in_channels=1, out_channels=5, base=16).to(device)
+opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+criterion = torch.nn.CrossEntropyLoss()
+
 
 class CsvLogger:
     def __init__(self, path, fieldnames):
