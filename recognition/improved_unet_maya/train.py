@@ -98,13 +98,19 @@ class CsvLogger:
         new = not os.path.exists(path)
         ensure_dir(os.path.dirname(path))
         self.f = open(path, "a", newline="")
-        self.w = csv.DictWriter(self.f, fieldnames=fieldnames)
-        if new: self.w.writeheader(); self.f.flush()
+        # 👇 allow extra keys without crashing
+        self.w = csv.DictWriter(self.f, fieldnames=self.fieldnames, extrasaction="ignore")
+        if new:
+            self.w.writeheader()
+            self.f.flush()
     def log(self, **kwargs):
+        # write only declared fields; timestamp only if header has it
         row = {k: kwargs.get(k) for k in self.fieldnames}
-        row["timestamp"] = int(time.time())
-        self.w.writerow(row); self.f.flush()
-    def close(self): self.f.close()
+        if "timestamp" in self.fieldnames:
+            row["timestamp"] = int(time.time())
+        self.w.writerow(row)
+        self.f.flush()
+
 
 def main():
     ap = argparse.ArgumentParser()
