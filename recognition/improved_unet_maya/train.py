@@ -110,6 +110,13 @@ class CsvLogger:
             row["timestamp"] = int(time.time())
         self.w.writerow(row)
         self.f.flush()
+    
+    def close(self):
+        try:
+            self.f.close()
+        except Exception:
+            pass
+
 
 
 def main():
