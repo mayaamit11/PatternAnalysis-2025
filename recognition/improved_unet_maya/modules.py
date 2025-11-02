@@ -1,4 +1,9 @@
 # modules.py — 2D CAN (Context Aggregation Network) for segmentation
+
+"Defines the Improved UNet3D architecture. Includes encoder and decoder blocks with 3D convolutions, "
+"residual connections, and bottleneck dilation for improved context aggregation. "
+"This file contains all model components as reusable PyTorch classes."
+
 import torch, torch.nn as nn, torch.nn.functional as F
 
 def conv3(in_c, out_c, dilation=1):

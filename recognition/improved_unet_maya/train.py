@@ -11,6 +11,9 @@ import matplotlib.pyplot as plt
 import csv, os, time
 ##add ins 
 
+"Contains the main training loop. Loads the model and dataset, applies loss functions "
+"(Dice + Cross Entropy), tracks metrics (loss and Dice), saves checkpoints to"
+" runs/unet3d/checkpoints/, and logs results to metrics.csv for plotting."
 
 #checking the directory...
 def ensure_dir(p):

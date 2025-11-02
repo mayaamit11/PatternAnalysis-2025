@@ -7,6 +7,9 @@ from dataset import OasisSliceDataset, Prostate3DDataset
 from modules import CAN2D, UNet3D
 import nibabel as nib
 
+"Provides the inference and evaluation script. Loads the best trained checkpoint, runs prediction "
+"on the test set, computes final Dice scores, and saves example "
+"segmentation overlays for qualitative assessment."
 # --- optional matplotlib (fallback to PIL if unavailable) ---
 _HAS_MPL = True
 try:

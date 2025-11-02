@@ -8,8 +8,13 @@ from torch.utils.data import Dataset
 import nibabel as nib   # <-- needed for NIfTI
 import os, glob, random
 
+"Implements the data loading and preprocessing pipeline. Uses Nibabel to read 3D NIfTI volumes and "
+"corresponding segmentation masks from the HipMRI dataset. Handles normalisation (zero-mean/unit-variance),"
+" cropping/padding to fixed size, and conversion to tensors for training"
+
 # ---------- OASIS 2D (unchanged) for the first question ----------
 def _strip_double_ext(name: str):
+    #get rid of double extensions like '.nii.png' or single '.png'
     if name.endswith(".nii.png"):
         return name[:-len(".nii.png")], ".nii.png"
     if name.endswith(".png"):
@@ -17,6 +22,12 @@ def _strip_double_ext(name: str):
     return name, ""
 
 def _mask_candidates_for_image(img_name: str):
+    """
+    create all possible segmentation mask name candidates
+    given an image file name (e.g., case_01.png -> seg_01.png).
+    Ensures correct pairing between images and their marked layered masks.
+    """
+
     base, ext = _strip_double_ext(img_name)
     cand_core = base
     if base.startswith("case_"):
@@ -43,6 +54,12 @@ def _mask_candidates_for_image(img_name: str):
     return uniq
 
 class OasisSliceDataset(Dataset):
+    """
+    Dataset for 2D OASIS slices.
+    Pairs .png images and their corresponding segmentation masks.
+    Performs z-score normalisation and returns tensor.
+    """
+
     def __init__(self, img_dir, lbl_dir, transform=None, strict=True):
         self.img_dir = Path(img_dir); self.lbl_dir = Path(lbl_dir)
         self.transform = transform; self.strict = strict
@@ -65,9 +82,17 @@ class OasisSliceDataset(Dataset):
                 f"No matching masks for {len(missing)} image(s). E.g. {ex}. Check {self.lbl_dir}"
             )
 
-    def __len__(self): return len(self.pairs)
+    def __len__(self): 
+        return len(self.pairs)
+
 
     def __getitem__(self, idx):
+        """
+        retruns one sample containing:
+          image: [1, H, W] FloatTensor
+          mask:  [H, W]   LongTensor
+          name:  str      image name
+        """
         img_path, mask_path = self.pairs[idx]
         img = np.array(Image.open(img_path)).astype(np.float32)
         if img.ndim == 3: img = img[..., 0]
@@ -88,12 +113,20 @@ class OasisSliceDataset(Dataset):
 ##example data
 class Prostate3DDataset(Dataset):
     """
-    Loads paired 3D MRI volumes and segmentation masks (HipMRI Study, Prostate 3D).
-    Returns:
-      image: FloatTensor [1, D, H, W]
-      mask:  LongTensor  [D, H, W]
-      name:  str (stem)
-    """
+        Dataset for 3D HipMRI Prostate volumes.
+        Loads paired 3D MRI (.nii.gz) and segmentation mask files.
+
+        Each sample contains:
+        image: FloatTensor [1, D, H, W]
+        mask:  LongTensor  [D, H, W]
+        name:  string (volume identifier)
+
+        Example usage:
+            ds = Prostate3DDataset(
+                image_dir="/home/groups/comp3710/HipMRI_Study_open/semantic_MRs",
+                label_dir="/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only"
+            )
+        """
 
     #this allows us to train later... using an overlay of the img_dir and the label 
     # train_ds = Prostate3DDataset(img_dir, label_dir)
@@ -128,6 +161,10 @@ class Prostate3DDataset(Dataset):
         return len(self.pairs)
 
     def __getitem__(self, idx):
+        """
+        Load one 3D volume and its mask.
+        Returns a dictionary suitable for training or evaluation.
+        """
         img_path, mask_path = self.pairs[idx]
         img = nib.load(img_path).get_fdata().astype(np.float32)
         mask = nib.load(mask_path).get_fdata().astype(np.int64)
