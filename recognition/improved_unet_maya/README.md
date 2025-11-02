@@ -81,7 +81,7 @@ semantic_labels_only/ → Corresponding segmentation masks (prostate, bladder, r
 |---------------------------------|---------------------------------------|
 | ![](images/example_gt_overlay.png) | ![](images/example_pred.png) |
 
-*These images show one MRI slice. Red/green overlays represent segmented anatomical regions — comparing the model’s prediction to human-marked ground truth.*
+*These images show one MRI slice. Red/green overlays represent segmented anatomical regions — comparing the model’s prediction to human-marked ground truth. *
 
 ---
 
