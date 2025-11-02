@@ -20,10 +20,8 @@ from modules import UNet3D
 
 # ----------------- Directory setup -----------------
 # Base persistent model directory (relative to repo root)
-PERSIST_ROOT = Path(os.environ.get(
-    "UNET3D_MODEL_ROOT",
-    Path(__file__).resolve().parents[2] / "models" / "improved_unet3d"
-))
+PERSIST_ROOT = Path("/home/Student/s4740054/projects/final_project/models/improved_unet3d")
+
 CKPT_PATH = PERSIST_ROOT / "unet3d" / "checkpoints" / "best_unet3d.pt"
 OUT_DIR   = PERSIST_ROOT / "unet3d" / "test_driver_out"
 CKPT_PATH.parent.mkdir(parents=True, exist_ok=True)
