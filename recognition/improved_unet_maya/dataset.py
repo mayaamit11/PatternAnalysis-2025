@@ -1,4 +1,21 @@
-# dataset.py — OASIS (2D) + Prostate (3D) loaders
+# dataset.py — HipMRI Prostate 3D loader for UNet3D
+
+
+# Provides a PyTorch Dataset for volumetric (3D) MRI segmentation on the
+# HipMRI Study (Prostate). Pairs *_LFOV.nii.gz MRI volumes with their
+# *_SEMANTIC.nii.gz label volumes, normalises the MRI, and returns tensors
+# shaped for 3D UNet:
+#   image: FloatTensor [1, D, H, W]
+#   mask:  LongTensor  [D, H, W]
+#
+# Example:
+#   ds = Prostate3DDataset(
+#       image_dir="/home/groups/comp3710/HipMRI_Study_open/semantic_MRs",
+#       label_dir="/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only",
+#   )
+#   sample = ds[0]
+#   sample["image"].shape -> [1, D, H, W]
+#   sample["mask"].shape  -> [D, H, W]
 
 from pathlib import Path
 from PIL import Image
@@ -7,10 +24,6 @@ import torch
 from torch.utils.data import Dataset
 import nibabel as nib   # <-- needed for NIfTI
 import os, glob, random
-
-"Implements the data loading and preprocessing pipeline. Uses Nibabel to read 3D NIfTI volumes and "
-"corresponding segmentation masks from the HipMRI dataset. Handles normalisation (zero-mean/unit-variance),"
-" cropping/padding to fixed size, and conversion to tensors for training"
 
 # ---------- OASIS 2D (unchanged) for the first question ----------
 def _strip_double_ext(name: str):

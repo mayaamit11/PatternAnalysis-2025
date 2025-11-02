@@ -1,4 +1,18 @@
-# train.py — train/validate/test CAN2D on OASIS with Dice+CE, plots & checkpoints
+
+# train.py — Train/Validate/Test CAN2D (OASIS) or UNet3D (HipMRI)
+# -----------------------------------------------------------------
+# Provides the main training routine for both 2D and 3D segmentation tasks.
+#
+# Responsibilities:
+#   * Loads OASIS 2D or HipMRI 3D dataset
+#   * Builds CAN2D or UNet3D model
+#   * Trains with Dice + Cross Entropy hybrid loss
+#   * Logs metrics to CSV for plotting (loss & Dice curves)
+#   * Saves best-performing checkpoint to ./runs/<model>/checkpoints/
+#
+# The validation phase runs each epoch, while test evaluation happens
+# only once at the end (for 2D). 3D training uses an internal 80/20 split.
+
 import argparse, os, math, json
 import numpy as np
 import torch, torch.nn as nn
@@ -15,11 +29,15 @@ import csv, os, time
 "(Dice + Cross Entropy), tracks metrics (loss and Dice), saves checkpoints to"
 " runs/unet3d/checkpoints/, and logs results to metrics.csv for plotting."
 
+
+
 #checking the directory...
 def ensure_dir(p):
+    """Ensure directory exists (like mkdir -p)."""
     os.makedirs(p, exist_ok= True); return p
 
 def plot_curves(log_path, history, tag):
+    """Plot training/validation loss and Dice curves."""
     ensure_dir(log_path)
     # Loss
     plt.figure()
@@ -36,6 +54,7 @@ def plot_curves(log_path, history, tag):
         plt.savefig(os.path.join(log_path, f"{tag}_dice.png")); plt.close()
 
 def compute_n_classes_from_loader(dl, num_batches=2):
+    """Infer number of classes by inspecting a few mini-batches."""
     mx = 0
     for i, b in enumerate(dl):
         mx = max(mx, int(b["mask"].max().item()))
@@ -44,6 +63,8 @@ def compute_n_classes_from_loader(dl, num_batches=2):
 
 #for the
 def dice_per_class_2d(logits, target, eps=1e-6):
+    """Compute per-class Dice for 2D logits vs integer mask."""
+
     # logits: [B,C,H,W], target: [B,H,W]
     C = logits.shape[1]
     pred = torch.softmax(logits, dim=1)
@@ -57,6 +78,7 @@ def dice_per_class_2d(logits, target, eps=1e-6):
     return torch.stack(dices)  # [C]
 
 def dice_per_class_3d(logits, target, eps=1e-6):
+    """Compute per-class Dice for 3D logits vs integer mask."""
     # logits: [B,C,D,H,W], target: [B,D,H,W]
     C = logits.shape[1]
     pred = torch.softmax(logits, dim=1)
@@ -71,6 +93,7 @@ def dice_per_class_3d(logits, target, eps=1e-6):
 
 
 class DiceCELoss2D(nn.Module):
+    """Hybrid Dice + CrossEntropy loss for 2D segmentation."""
     def __init__(self, weight=None): super().__init__(); self.ce = nn.CrossEntropyLoss(weight=weight)
     def forward(self, logits, target):
         ce = self.ce(logits, target)
@@ -83,6 +106,7 @@ class DiceCELoss2D(nn.Module):
         return 0.5*ce + 0.5*(1 - dice.mean())
 
 class DiceCELoss3D(nn.Module):
+    """Hybrid Dice + CrossEntropy loss for 3D segmentation."""
     def __init__(self, weight=None): super().__init__(); self.ce = nn.CrossEntropyLoss(weight=weight)
     def forward(self, logits, target):
         ce = self.ce(logits, target)
@@ -96,6 +120,7 @@ class DiceCELoss3D(nn.Module):
 
 
 class CsvLogger:
+    """Appends training metrics to a CSV file (epoch, loss, dice, etc.)."""
     def __init__(self, path, fieldnames):
         self.path = path; self.fieldnames = fieldnames
         new = not os.path.exists(path)
@@ -252,6 +277,7 @@ def main():
         logger = CsvLogger(os.path.join(run_dir, "metrics.csv"), ["epoch","train_loss","val_loss","val_mean_dice"])
 
         def maybe_crop(x, y, c=args.crop):
+            """Optionally center-crop both x and y for memory control."""
             if c and c > 0:
                 _,_,D,H,W = x.shape
                 d0 = max((D-c)//2, 0); h0 = max((H-c)//2, 0); w0 = max((W-c)//2, 0)

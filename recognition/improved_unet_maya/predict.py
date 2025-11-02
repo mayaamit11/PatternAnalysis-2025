@@ -7,6 +7,20 @@ from dataset import OasisSliceDataset, Prostate3DDataset
 from modules import CAN2D, UNet3D
 import nibabel as nib
 
+# a single entry-point for evaluating trained models:
+#   - Task "oasis2d":  CAN2D on PNG slice pairs (OASIS)
+#   - Task "prostate3d": UNet3D on 3D NIfTI volumes (HipMRI) <--- FINAL UPLOAD USING... 
+#
+# purpose:
+#   * Load best checkpoint (or allow --random_init for pipeline tests)
+#   * Run inference on test/held-out data
+#   * Compute per-class Dice and mean Dice
+#   * Save qualitative overlays (PNG) and (for 3D) NIfTI predictions
+#
+# Note: Keep logits → softmax/sigmoid inside metrics (not in model) to avoid
+# numeric issues and to keep models reusable.
+
+
 "Provides the inference and evaluation script. Loads the best trained checkpoint, runs prediction "
 "on the test set, computes final Dice scores, and saves example "
 "segmentation overlays for qualitative assessment."
@@ -31,6 +45,7 @@ PALETTE = np.array([
 ], dtype=np.uint8)
 
 def name_to_mr_path(mr_dir, name):
+    """Derive MRI path from a clean stem (handles optional suffixes)."""
     base = name
     # strip any suffixes if present
     for suf in ("_LFOV.nii.gz", ".nii.gz", ".nii", "_LFOV"):
@@ -46,6 +61,11 @@ def paint_image(mask_np: np.ndarray) -> Image.Image:
 
 
 def dice_per_class_2d(logits, target, eps=1e-6):
+    """
+    Per-class Dice for 2D logits.
+    logits: [B, C, H, W], target: [B, H, W] (integer labels)
+    returns: [C] tensor (averaged over batch+pixels)
+    """
     # logits: [B,C,H,W], target: [B,H,W]
     C = logits.shape[1]
     pred = torch.softmax(logits, dim=1)
@@ -60,6 +80,11 @@ def dice_per_class_2d(logits, target, eps=1e-6):
 
 
 def dice_per_class_3d(logits, target, eps=1e-6):
+    """
+    Per-class Dice for 3D logits.
+    logits: [B, C, D, H, W], target: [B, D, H, W] (integer labels)
+    returns: [C] tensor (averaged over batch+voxels)
+    """
     # logits: [B,C,D,H,W], target: [B,D,H,W]
     C = logits.shape[1]
     pred = torch.softmax(logits, dim=1)
@@ -75,6 +100,7 @@ def dice_per_class_3d(logits, target, eps=1e-6):
 
 # -------- overlays with MPL (or PIL fallback) --------
 def save_overlay2d(gray, mask, out_png):
+    """Save side-by-side MRI and overlay for a single 2D slice."""
     if _HAS_MPL:
         plt.figure(figsize=(7,3))
         plt.subplot(1,2,1); plt.imshow(gray, cmap="gray"); plt.title("MRI")
@@ -90,6 +116,10 @@ def save_overlay2d(gray, mask, out_png):
 
 
 def save_overlay3d(vol, mask, out_png_prefix):
+    """
+    Save a few central-ish slices (low/mid/high) as overlays for a 3D volume.
+    vol, mask: [H, W, D] arrays
+    """
     D = vol.shape[2]
     for frac, tag in [(0.4, "low"), (0.5, "mid"), (0.6, "high")]:
         k = int(D*frac)
