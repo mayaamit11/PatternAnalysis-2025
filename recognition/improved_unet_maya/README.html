@@ -1,0 +1,222 @@
+<p># Prostate 3D Segmentation using Improved UNet3D</p>
+<p>This project performs 3D medical image segmentation on the HipMRI
+Study on Prostate Cancer dataset using an <strong>Improved
+UNet3D</strong> architecture.<br />
+The goal is to segment the prostate and other anatomical structures
+within MRI volumes, achieving <strong>mean Dice ≥ 0.70</strong> on the
+test set.<br />
+Final performance: <strong>mean Dice = 0.72 (the target was met,
+specified during PREDICT)</strong>.</p>
+<pre><code>## Files
+
+| File | Purpose |
+|------|----------|
+| `modules.py` | Contains the Improved UNet3D architecture (encoder-decoder with residual/dilated blocks). |
+| `dataset.py` | Loads and preprocesses 3D NIfTI volumes from HipMRI. |
+| `train.py` | Training + validation loop with Dice/Loss logging and checkpoint saving. |
+| `predict.py` | Loads best checkpoint, runs inference, reports Dice, saves overlay images. |
+| `utils.py` | Helper functions for metrics, Dice loss, etc. |
+| `runs/` | Contains logs, checkpoints, and `metrics.csv`. |
+| `metrics/` | Locally generated plots and tables for this report. |
+| `images/` | Png of example MRI slice and overlayed segmentation |
+
+## Training Configuration
+| Setting | Value |
+|----------|-------|
+| Optimizer | Adam |
+| Learning Rate | 1e-3 |
+| Batch Size | 1 |
+| Epochs | 6 |
+| Loss | Dice + Cross Entropy |
+| GPU | NVIDIA A100 (Rangpur) |
+| Framework | PyTorch 2.5.1 |
+
+## Dataset
+
+**Dataset:** HipMRI Study on Prostate Cancer  
+**Location (Rangpur):** `/home/groups/comp3710/HipMRI_Study_open/`
+
+- **semantic_MRs/** → 3D MRI input volumes  
+- **semantic_labels_only/** → Corresponding segmentation masks  
+- Loaded with Nibabel, normalised to zero-mean/unit-variance  
+- Cropped/padded to consistent shape  
+- Split 70% train, 15% val, 15% test
+
+
+Validation metrics from training (train.py) and final test Dice from predict.py
+
+| Metric               | Training Dice | Validation Dice | Test Dice | Target | Met Target? |
+|----------------------|---------------|------------------|-----------|--------|-------------|
+| Mean Dice Coefficient| —             | 0.714           | **0.72** | ≥ 0.70 | yesss |
+| Validation Loss      | —             | 0.206           | —         | —      | —           |
+| Epochs Trained       | 8            | —                | —         | —      | —           |
+
+
+### Training Curves
+![Training vs Validation Loss](metrics/training_loss_curve.png) 
+![Validation Mean Dice](metrics/val_dice_curve.png) 
+*Both training and validation loss decrease steadily while the Dice coefficient improves to 0.72, indicating stable training and convergence.*
+
+### Example Predictions (Test Set)
+**Ground-truth overlay** vs **Model prediction** for case B006_Week0 (slice 64)
+
+| Ground Truth (MRI + GT overlay) | Model Prediction (MRI + Pred overlay) |
+| ![](images/example_gt_overlay.png) | ![](images/example_pred.png) |
+
+## Data (Rangpur)
+**Dataset:** HipMRI Study on Prostate Cancer  
+cd /home/groups/comp3710/HipMRI_Study_open/semantic_MRs$ — 3D MRI input volumes (.nii.gz)
+cd /home/groups/comp3710/HipMRI_Study_open/semantic_labels_only$ — segmentation marked masks (prostate, bladder, rectum, bone, etc.)
+
+**Preprocessing:**
+- Loaded using **Nibabel**
+- Normalised to zero mean and unit variance
+- Cropped/padded to fixed size for 3D UNet input
+- Train/Validation/Test split ≈ 70% / 15% / 15%
+
+## Environment &amp; Execution (Rangpur HPC)
+
+projects/final_project/runners
+├─ logs #
+│  ├─ unet3d_gpu_predict_324801.err 
+|  ├─ unet3d_gpu_predict_324801.out --&gt; # PREDICT RESULT the final dice value of 0.7200782299041748 
+|  ├─ ...
+│  └─ ...
+├─ unet3d_gpu_train.sbatch #this file was ran first to train the model, produced a predict value but uses
+├─ unet3d_gpu_predict.sbatch #after train was ran predict was then ran using weights and bias... 
+
+within projects/final_project/PatternAnalysis-2025/recognition/improved_unet_maya$
+
+improved_unet_maya/
+└── runs/
+    └── unet3d/
+        ├── checkpoints/
+        │   └── best_unet3d.pt  #this is where the weights and bias post unet3d_gpu_train are stored 
+        ├── logs/
+        │   └── 3d_loss.png # TRAINING RESULT 
+        │   └── 3d_dice.png # TRAINING RESULT dice validation per epoch
+        └── metrics.csv
+
+## --- unet3d_gpu_train.sbatch --- ##
+
+    #!/bin/bash -l
+    #SBATCH --nodes=1
+    #SBATCH --ntasks-per-node=1
+    #SBATCH --cpus-per-task=2
+    #SBATCH --gres=gpu:a100:1
+    #SBATCH --job-name=unet3d_gpu_predict
+    #SBATCH -o logs/%x_%j.out
+    #SBATCH -e logs/%x_%j.err
+    #SBATCH --partition=comp3710
+    #SBATCH -A comp3710
+    #SBATCH --time=03:00:00
+
+    set -euo pipefail
+    mkdir -p logs
+
+    echo &quot;HOME=$HOME&quot;
+    hostname
+    date
+    echo &quot;JOB ID=${SLURM_JOB_ID:-unknown}&quot;
+
+    # --- Env ---
+    source ~/miniconda3/etc/profile.d/conda.sh
+    conda activate torch
+    which python &amp;&amp; python -V
+
+    # --- Paths ---
+    CODE_DIR=&quot;/home/Student/s4740054/projects/final_project/PatternAnalysis-2025/recognition/improved_unet_maya&quot;
+    MR_DIR=&quot;/home/groups/comp3710/HipMRI_Study_open/semantic_MRs&quot;
+    LBL_DIR=&quot;/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only&quot;
+
+    # --- Predict config ---
+    CROP=160
+    OUT_DIR=&quot;./runs/unet3d/predict_gpu&quot;
+
+    cd &quot;$CODE_DIR&quot;
+
+    # find newest checkpoint from training
+    CKPT=$(ls -t ./runs/unet3d/checkpoints/*.pt 2&gt;/dev/null | head -n 1 || true)
+    if [[ -z &quot;$CKPT&quot; ]]; then
+    echo &quot;ERROR: No checkpoint found in ./runs/unet3d/checkpoints/&quot;
+    exit 1
+    fi
+    echo &quot;Using checkpoint: $CKPT&quot;
+
+    echo &quot;==&gt; PREDICT (GPU, 3D)  crop=$CROP&quot;
+    python -u predict.py \
+    --task prostate3d \
+    --mr_dir &quot;$MR_DIR&quot; \
+    --lbl_dir &quot;$LBL_DIR&quot; \
+    --crop &quot;$CROP&quot; \
+    --device cuda \
+    --ckpt3d &quot;$CKPT&quot; \
+    --out_dir &quot;$OUT_DIR&quot; \
+    --batch 1
+
+    echo &quot;==&gt; Outputs (top-level):&quot;
+    find &quot;$OUT_DIR&quot; -maxdepth 2 -type f | head -n 30 || true
+
+    date
+    echo &quot;Done.&quot;
+
+## ---  unet3d_gpu_predict.sbatch --- ##
+    #!/bin/bash -l
+    #SBATCH --nodes=1
+    #SBATCH --ntasks-per-node=1
+    #SBATCH --cpus-per-task=2
+    #SBATCH --gres=gpu:a100:1
+    #SBATCH --job-name=unet3d_gpu_train
+    #SBATCH --partition=comp3710
+    #SBATCH -A comp3710
+    #SBATCH --time=03:00:00                   # use 3h explicitly (partition default)
+    #SBATCH -o /home/Student/s4740054/projects/final_project/logs/%x_%j.out
+    #SBATCH -e /home/Student/s4740054/projects/final_project/logs/%x_%j.err
+
+    set -euo pipefail
+    mkdir -p /home/Student/s4740054/projects/final_project/logs
+
+    echo &quot;HOME=$HOME&quot;
+    hostname
+    date
+    echo &quot;JOB ID=${SLURM_JOB_ID:-unknown}&quot;
+
+    # --- Env ---
+    source ~/miniconda3/etc/profile.d/conda.sh
+    conda activate torch
+    which python &amp;&amp; python -V
+
+    # --- Paths (match your layout) ---
+    CODE_DIR=&quot;/home/Student/s4740054/projects/final_project/PatternAnalysis-2025/recognition/improved_unet_maya&quot;
+    MR_DIR=&quot;/home/groups/comp3710/HipMRI_Study_open/semantic_MRs&quot;
+    LBL_DIR=&quot;/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only&quot;
+
+    # --- Train config ---
+    CROP=160          # must be divisible by model stride
+    EPOCHS=8          # increase later for full run
+    LR=3e-4
+    OUT_DIR=&quot;./runs/unet3d&quot;
+
+    cd &quot;$CODE_DIR&quot;
+    echo &quot;==&gt; TRAIN (GPU, 3D) | crop=$CROP  epochs=$EPOCHS  lr=$LR&quot;
+
+    python -u train.py \
+    --task prostate3d \
+    --mr_dir &quot;$MR_DIR&quot; \
+    --lbl_dir &quot;$LBL_DIR&quot; \
+    --crop &quot;$CROP&quot; \
+    --epochs &quot;$EPOCHS&quot; \
+    --lr &quot;$LR&quot; \
+    --device cuda \
+    --out_dir ./runs
+
+    echo &quot;==&gt; Checkpoints:&quot;
+    ls -lh ./runs/unet3d/checkpoints || true
+
+    date
+    echo &quot;✅ Done.&quot;
+
+SUMMARY 
+The Improved UNet3D successfully segmented prostate MRI volumes from the HipMRI dataset, achieving a mean Dice of 0.72 on unseen test data.
+Training and validation metrics demonstrated stable convergence, and the final model generalized well across cases.
+All results were produced reproducibly on UQ’s Rangpur A100 GPU cluster.</code></pre>

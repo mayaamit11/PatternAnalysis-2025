@@ -1,7 +1,7 @@
-   # Prostate 3D Segmentation using Improved UNet3D
-
-This project performs 3D medical image segmentation on the HipMRI Study on Prostate Cancer dataset using an **Improved UNet3D** architecture.  
-The goal is to segment the prostate and other anatomical structures within MRI volumes, achieving **mean Dice ≥ 0.70** on the test set.  
+# Prostate 3D Segmentation using Improved UNet3D 
+**student number: 47400548**
+This project performs 3D medical image segmentation on the HipMRI Study on Prostate Cancer dataset using an Improved UNet3D architecture.  
+The goal is to segment the prostate and other anatomical structures within MRI volumes, achieving mean Dice ≥ 0.70 on the test set.  
 Final performance: **mean Dice = 0.72 (the target was met, specified during PREDICT)**.
 
 
