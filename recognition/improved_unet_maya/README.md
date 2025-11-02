@@ -57,7 +57,7 @@ semantic_labels_only/ → Corresponding segmentation masks (prostate, bladder, r
 
 ---
 
-## 📊 Training and Validation Results
+##  Training and Validation Results
 
 | Metric | Training Dice | Validation Dice | Test Dice | Target | Met Target? |
 |--------|----------------|----------------|------------|----------|--------------|
@@ -114,7 +114,7 @@ If this checkpoint is missing, re-run training using:
 ```bash
 python -u train.py --task prostate3d --device cuda --crop 160 --epochs 8
 
-🧮 Running on Rangpur (COMP3710 GPU Cluster)
+Running on Rangpur (COMP3710 GPU Cluster)
 All .sbatch scripts are located under:
 ~/projects/final_project/runners/
 
