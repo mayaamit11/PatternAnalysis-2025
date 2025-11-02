@@ -29,6 +29,12 @@ Final performance: **mean Dice = 0.72 (the target was met, specified during PRED
     | GPU | NVIDIA A100 (Rangpur) |
     | Framework | PyTorch 2.5.1 |
 
+    ## Test Driver
+    To reproduce the final test evaluation on Rangpur:
+    ```bash
+    python test_driver.py
+    This script loads the trained model
+
     ## Dataset
 
     **Dataset:** HipMRI Study on Prostate Cancer  
@@ -60,6 +66,7 @@ Final performance: **mean Dice = 0.72 (the target was met, specified during PRED
 
     | Ground Truth (MRI + GT overlay) | Model Prediction (MRI + Pred overlay) |
     | ![](images/example_gt_overlay.png) | ![](images/example_pred.png) |
+    These images display an example MRI slice from the HipMRI dataset — the left shows the ground-truth anatomical segmentation overlay, while the right shows the model’s predicted segmentation produced by the Improved UNet3D.
 
     ## Data (Rangpur)
     **Dataset:** HipMRI Study on Prostate Cancer  
@@ -74,145 +81,59 @@ Final performance: **mean Dice = 0.72 (the target was met, specified during PRED
 
     ## Environment & Execution (Rangpur HPC)
 
-    projects/final_project/runners
-    ├─ logs #
-    │  ├─ unet3d_gpu_predict_324801.err 
-    |  ├─ unet3d_gpu_predict_324801.out --> # PREDICT RESULT the final dice value of 0.7200782299041748 
-    |  ├─ ...
-    │  └─ ...
-    ├─ unet3d_gpu_train.sbatch #this file was ran first to train the model, produced a predict value but uses
-    ├─ unet3d_gpu_predict.sbatch #after train was ran predict was then ran using weights and bias... 
+    projects/
+└── final_project/
+    ├── PatternAnalysis-2025/
+    │   └── recognition/
+    │       ├── improved_unet_maya/
+    │       │   ├── dataset.py
+    │       │   ├── modules.py
+    │       │   ├── predict.py
+    │       │   ├── train.py
+    │       │   ├── test_driver.py
+    │       │   ├── utils.py
+    │       │   ├── README.md
+    │       │   ├── __pycache__/
+    │       │   ├── metrics/
+    │       │   │   ├── training_loss_curve.png
+    │       │   │   ├── val_dice_curve.png
+    │       │   │   └── ...
+    │       │   ├── images/
+    │       │   │   ├── B006_Week0_LFOV.nii.gz
+    |       |   |   ├── example_pred.png
+    │       │   │   ├── example_gt_overlay.png
+    │       │   │   ├── B006_Week0_SEMANTIC.nii.gz
+    │       │   │   └── view_slice.py
+    │       │   └── runs/
+    │       │       └── unet3d/
+    │       │           ├── logs/
+    │       │           │   ├── 3d_loss.png
+    │       │           │   └── 3d_dice.png
+    │       │           ├── checkpoints/
+    │       │           │   └── best_unet3d.pt <-- training data 
+    │       │           └── metrics.csv
+    │       └── README.md
+    ├── logs/
+    │   ├── unet3d_gpu_predict_324801.err
+    │   ├── unet3d_gpu_predict_324801.out   → final Dice = 0.7200782299
+    │   └── ...
+    ├── runners/
+    │   ├── unet3d_gpu_train.sbatch <-- runner
+    │   └── unet3d_gpu_predict.sbatch <-- runner
+    └── models/
+        └── improved_unet3d/
+            └── unet3d/
+                ├── checkpoints/
+                │   └── best_unet3d.pt
+                ├── logs/
+                │   ├── 3d_loss.png
+                │   └── 3d_dice.png
+                ├── test_driver_out/
+                │   ├── test_dice.json
+                │   └── test_dice.csv
+                └── metrics.csv
 
-    within projects/final_project/PatternAnalysis-2025/recognition/improved_unet_maya$
-
-    improved_unet_maya/
-    └── runs/
-        └── unet3d/
-            ├── checkpoints/
-            │   └── best_unet3d.pt  #this is where the weights and bias post unet3d_gpu_train are stored 
-            ├── logs/
-            │   └── 3d_loss.png # TRAINING RESULT 
-            │   └── 3d_dice.png # TRAINING RESULT dice validation per epoch
-            └── metrics.csv
-
-    ## --- unet3d_gpu_train.sbatch --- ##
-
-        #!/bin/bash -l
-        #SBATCH --nodes=1
-        #SBATCH --ntasks-per-node=1
-        #SBATCH --cpus-per-task=2
-        #SBATCH --gres=gpu:a100:1
-        #SBATCH --job-name=unet3d_gpu_predict
-        #SBATCH -o logs/%x_%j.out
-        #SBATCH -e logs/%x_%j.err
-        #SBATCH --partition=comp3710
-        #SBATCH -A comp3710
-        #SBATCH --time=03:00:00
-
-        set -euo pipefail
-        mkdir -p logs
-
-        echo "HOME=$HOME"
-        hostname
-        date
-        echo "JOB ID=${SLURM_JOB_ID:-unknown}"
-
-        # --- Env ---
-        source ~/miniconda3/etc/profile.d/conda.sh
-        conda activate torch
-        which python && python -V
-
-        # --- Paths ---
-        CODE_DIR="/home/Student/s4740054/projects/final_project/PatternAnalysis-2025/recognition/improved_unet_maya"
-        MR_DIR="/home/groups/comp3710/HipMRI_Study_open/semantic_MRs"
-        LBL_DIR="/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only"
-
-        # --- Predict config ---
-        CROP=160
-        OUT_DIR="./runs/unet3d/predict_gpu"
-
-        cd "$CODE_DIR"
-
-        # find newest checkpoint from training
-        CKPT=$(ls -t ./runs/unet3d/checkpoints/*.pt 2>/dev/null | head -n 1 || true)
-        if [[ -z "$CKPT" ]]; then
-        echo "ERROR: No checkpoint found in ./runs/unet3d/checkpoints/"
-        exit 1
-        fi
-        echo "Using checkpoint: $CKPT"
-
-        echo "==> PREDICT (GPU, 3D)  crop=$CROP"
-        python -u predict.py \
-        --task prostate3d \
-        --mr_dir "$MR_DIR" \
-        --lbl_dir "$LBL_DIR" \
-        --crop "$CROP" \
-        --device cuda \
-        --ckpt3d "$CKPT" \
-        --out_dir "$OUT_DIR" \
-        --batch 1
-
-        echo "==> Outputs (top-level):"
-        find "$OUT_DIR" -maxdepth 2 -type f | head -n 30 || true
-
-        date
-        echo "Done."
-
-    ## ---  unet3d_gpu_predict.sbatch --- ##
-        #!/bin/bash -l
-        #SBATCH --nodes=1
-        #SBATCH --ntasks-per-node=1
-        #SBATCH --cpus-per-task=2
-        #SBATCH --gres=gpu:a100:1
-        #SBATCH --job-name=unet3d_gpu_train
-        #SBATCH --partition=comp3710
-        #SBATCH -A comp3710
-        #SBATCH --time=03:00:00                   # use 3h explicitly (partition default)
-        #SBATCH -o /home/Student/s4740054/projects/final_project/logs/%x_%j.out
-        #SBATCH -e /home/Student/s4740054/projects/final_project/logs/%x_%j.err
-
-        set -euo pipefail
-        mkdir -p /home/Student/s4740054/projects/final_project/logs
-
-        echo "HOME=$HOME"
-        hostname
-        date
-        echo "JOB ID=${SLURM_JOB_ID:-unknown}"
-
-        # --- Env ---
-        source ~/miniconda3/etc/profile.d/conda.sh
-        conda activate torch
-        which python && python -V
-
-        # --- Paths (match your layout) ---
-        CODE_DIR="/home/Student/s4740054/projects/final_project/PatternAnalysis-2025/recognition/improved_unet_maya"
-        MR_DIR="/home/groups/comp3710/HipMRI_Study_open/semantic_MRs"
-        LBL_DIR="/home/groups/comp3710/HipMRI_Study_open/semantic_labels_only"
-
-        # --- Train config ---
-        CROP=160          # must be divisible by model stride
-        EPOCHS=8          # increase later for full run
-        LR=3e-4
-        OUT_DIR="./runs/unet3d"
-
-        cd "$CODE_DIR"
-        echo "==> TRAIN (GPU, 3D) | crop=$CROP  epochs=$EPOCHS  lr=$LR"
-
-        python -u train.py \
-        --task prostate3d \
-        --mr_dir "$MR_DIR" \
-        --lbl_dir "$LBL_DIR" \
-        --crop "$CROP" \
-        --epochs "$EPOCHS" \
-        --lr "$LR" \
-        --device cuda \
-        --out_dir ./runs
-
-        echo "==> Checkpoints:"
-        ls -lh ./runs/unet3d/checkpoints || true
-
-        date
-        echo "✅ Done."
+   
     
     SUMMARY 
     The Improved UNet3D successfully segmented prostate MRI volumes from the HipMRI dataset, achieving a mean Dice of 0.72 on unseen test data.
