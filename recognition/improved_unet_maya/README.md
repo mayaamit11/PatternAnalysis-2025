@@ -165,13 +165,3 @@ The Improved UNet3D successfully segmented prostate MRI volumes from the HipMRI 
 Training and validation metrics demonstrated stable convergence, and the final model generalized well to the test set.
 All results were generated reproducibly on UQ’s Rangpur A100 GPU cluster.
 
-
-
----
-
-This version is ready for submission:
-- Tutors can directly copy–paste your commands.
-- They know exactly where the model parameters live.
-- It works even if they skip your `.sbatch` scripts.
-- You’ve documented all expected outputs and results.
-
